@@ -1,6 +1,6 @@
-# Protocol Name
+# Curve: Storage Proofs
 
-### Prize Pool TO BE FILLED OUT BY CYFRIN
+### Prize Pool
 
 - Total Pool - 14723 OP
 - H/M -14,000 OP
