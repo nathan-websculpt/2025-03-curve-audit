@@ -75,7 +75,6 @@ Also, it is worth noting that the oracle is controlled by a DAO and its paramete
 
 
 - [Documentation](https://docs.curve.fi/scrvusd/overview/#smart-contracts)  
-- [GitHub](https://github.com/curvefi/storage-proofs/tree/audit)
 
 
 ## Actors
