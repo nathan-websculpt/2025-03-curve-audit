@@ -48,6 +48,78 @@ def test_ownership(soracle, admin, anne):
         with boa.reverts():
             soracle.set_max_v2_duration(DEFAULT_MAX_V2_DURATION + 1)
 
+@pytest.fixture(scope="module")
+def soracle(admin):
+    with boa.env.prank(admin):
+        # assume we are deploying the oracle for the new blockchain after years of scrvUSD existence,
+        # so the price reached 4 crvUSD per scrvUSD, _initial_price is 4*10**18
+        contract = boa.load("contracts/scrvusd/oracles/ScrvusdOracleV2.vy", 4*10**18)
+    return contract
+
+# https://codehawks.cyfrin.io/c/2025-03-curve/s/cm8907inc0005l503zgtbu3ob
+def test_initial_price_at_later_oracle_deploy(soracle, verifier, admin):
+    print("\n| where                      | price_v2()        | raw_price()       | block_number")
+    # here price_v2() returns 4, but raw_price() returns 1
+    price_v2, raw_price = soracle.price_v2(), soracle.raw_price()
+    print("  on init                    ", price_v2, raw_price, boa.env.evm.patch.block_number)
+    assert price_v2 == 4*10**18
+    assert raw_price == 1*10**18  # incorrect
+
+    # assume for some reason we want to increase the max_price_increment
+    with boa.env.prank(admin):
+        soracle.set_max_price_increment(10**18)
+    
+    # then if we do not update the price at the same block, the price at price_v2() will be inconsistent and equal to 1
+    boa.env.time_travel(seconds=12)
+    price_v2, raw_price = soracle.price_v2(), soracle.raw_price()
+    print("  max_price_increment updated", price_v2, raw_price, boa.env.evm.patch.block_number)
+    assert price_v2 == 1*10**18   # incorrect
+    assert raw_price == 1*10**18  # incorrect
+
+    # prepare the price parameters
+    ts = boa.env.evm.patch.timestamp
+    price_params = [
+        0,                                # total_debt
+        40000000000000000000000000,       # total_idle
+        10000000000000000000000000,       # totalSupply
+        ts + 500000,                      # full_profit_unlock_date
+        5831137848451547566180476730,     # profit_unlocking_rate
+        ts,                               # last_profit_update
+        3000000000000000000000,           # balanceOf(self)
+    ]
+
+    with boa.env.prank(verifier):
+        soracle.update_price(
+            price_params,
+            ts,
+            boa.env.evm.patch.block_number,
+        )
+
+    # only after price update the raw_price() will be consistent and equal to 4
+    # but price_v2() will still be inconsistent and equal to 1
+    price_v2, raw_price = soracle.price_v2(), soracle.raw_price()
+    print("  after update_price         ", price_v2, raw_price, boa.env.evm.patch.block_number)
+    assert price_v2 == 1*10**18  # incorrect
+    assert raw_price == 4*10**18
+
+    # only at the next block the price_v2() will become consistent
+    boa.env.time_travel(seconds=12)
+    price_v2, raw_price = soracle.price_v2(), soracle.raw_price()
+    print("  wait one block             ", price_v2, raw_price, boa.env.evm.patch.block_number)
+    assert price_v2 > 4*10**18
+    assert raw_price > 4*10**18
+
+# run it with `-s` flag to see the print statements
+# pytest tests/scrvusd/oracle/unitary/test_v2.py::test_initial_price_at_later_oracle_deploy -s
+
+# stdout output:
+#| where                      | price_v2()        | raw_price()       | block_number
+#  on init                     4000000000000000000 1000000000000000000 1
+#  max_price_increment updated 1000000000000000000 1000000000000000000 2
+#  after update_price          1000000000000000000 4000000000000000000 2
+#  wait one block              4000000027989461868 4000000027989461868 3
+
+
 
 def test_setters(soracle, admin):
     with boa.env.prank(admin):
